@@ -10,9 +10,9 @@
 #benchmark
 
 #基于下面这个熔断器改造
-1. https://github.com/rubyist/circuitbreaker
-2. https://github.com/cenkalti/backoff
-2. https://github.com/github.com/facebookgo/clock
+1. https://github.com/rubyist/circuitbreaker master 4afb8473475bafc430776dcaafd1e6d84a8032ad
+2. https://github.com/cenkalti/backoff v4.0.2
+2. https://github.com/facebookgo/clock master 2020-05-24 600d898af40aa09a7a93ecb9265d87b0504b6f03
 
 #熔断器资料
 1. https://zhuanlan.zhihu.com/p/58428026 
