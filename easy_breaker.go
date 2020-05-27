@@ -1,6 +1,9 @@
 package easy_circuitbreaker
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
 
 var breakMap map[string]*EasyBreaker
 
@@ -23,6 +26,7 @@ type EasyBreaker struct {
 	breaker *circuitbreaker.Breaker
 
 	mq              chan int
+	mqCapacity      int
 	workerNum       int32
 	workerNumRuning int32
 
@@ -36,11 +40,15 @@ func GetEasyBreaker(name string, breaker *circuitbreaker.Breaker) {
 }
 
 func NewBreakerWithOptions(options *circuitbreaker.Options) *EasyBreaker {
-	return &EasyBreaker{
+	eb := &EasyBreaker{
 		breaker:   circuitbreaker.NewBreakerWithOptions(options),
 		mq:        make(chan int, DEFAULT_MQ_SIZE),
 		workerNum: DEFAULT_WORKER_NUM,
 	}
+
+	eb.mqCapacity = DEFAULT_MQ_SIZE
+
+	return eb
 }
 
 func (eb *EasyBreaker) Run() {
@@ -50,11 +58,11 @@ func (eb *EasyBreaker) Run() {
 	}
 
 	for i := 0; i < eb.workerNum; i++ {
-		go runWorker()
+		go eb.runWorker()
 	}
 
 	//监控和控制程序
-	go runMonitor()
+	go eb.runMonitor()
 
 }
 
@@ -75,9 +83,36 @@ func (eb *EasyBreaker) runMonitor() {
 		eb.breaker.Reset()
 	}()
 
-	//监控队列中未消费数量
+	maxQueuedCount := int(eb.mqCapacity * 0.9)
+	warningCount := 0
 
-	//控制worker数量
+	for {
+
+		if atomic.LoadInt32(eb.workerNumRuning) < 1 {
+			go eb.runWorker() //增大worker数量
+
+		} else if len(eb.mq) > maxQueuedCount {
+			//监控队列中未消费数量
+			//超过阈值 3 然后增大worker数量
+			if warningCount >= 3 {
+				eb.runWorker()
+				warningCount = 0
+			} else {
+				warningCount++
+			}
+
+		} else {
+			//正常状态
+			if atomic.LoadInt32(eb.workerNumRuning) > 1 {
+				//超过1个 减少worker数量, 达到1个的时候可以采用无锁方式
+				eb.mq <- MQ_EVENT_KILL_WORKER
+			}
+		}
+
+		//控制worker数量
+
+		time.Sleep(time.Millisecond * 300)
+	}
 
 }
 
@@ -107,7 +142,14 @@ workerLoop:
 
 		switch messageData {
 		case MQ_EVENT_SUCCESS:
-			eb.breaker.SuccessNoLock()
+			if eb.workerNumRuning < 2 {
+				//无竞争
+				eb.breaker.SuccessNoLock()
+
+			} else {
+				eb.breaker.Success()
+			}
+
 		case MQ_EVENT_FAIL:
 			eb.breaker.Fail()
 		case MQ_EVENT_KILL_WORKER:

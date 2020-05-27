@@ -474,3 +474,26 @@ func TestPartialSecondBackoff(t *testing.T) {
 		t.Fatalf("expected breaker to be ready after more than nextBackoff time had passed")
 	}
 }
+
+//比率阈值 success 性能
+func BenchmarkRateBreakerSuccessBlock(b *testing.B) {
+
+	breaker := NewRateBreaker(0.9, 100)
+
+	for i := 0; i < b.N; i++ {
+		breaker.Ready()
+		breaker.Success()
+	}
+
+}
+
+func BenchmarkRateBreakerSuccessNoLock(b *testing.B) {
+
+	breaker := NewRateBreaker(0.9, 100)
+
+	for i := 0; i < b.N; i++ {
+		breaker.Ready()
+		breaker.SuccessNoLock()
+	}
+
+}
