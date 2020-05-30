@@ -28,7 +28,7 @@
 // The package also provides a wrapper around an http.Client that wraps all of
 // the http.Client functions with a Breaker.
 //
-package circuit
+package circuitbreaker
 
 import (
 	"context"

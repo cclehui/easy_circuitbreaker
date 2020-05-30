@@ -1,4 +1,4 @@
-package circuit
+package circuitbreaker
 
 import (
 	"context"
@@ -487,6 +487,28 @@ func BenchmarkRateBreakerSuccessBlock(b *testing.B) {
 
 }
 
+func BenchmarkRateBreakerSuccessBlockP(b *testing.B) {
+
+	breaker := NewRateBreaker(0.9, 100)
+	pNum := 1000
+	quitChan := initBreakerBenchEnv(breaker, pNum, true)
+	defer func() {
+		for i := 1; i <= pNum; i++ {
+			quitChan <- i
+		}
+
+	}()
+
+	b.RunParallel(func(p *testing.PB) {
+		for p.Next() {
+			breaker.Ready()
+			breaker.Success()
+
+		}
+	})
+
+}
+
 func BenchmarkRateBreakerSuccessNoLock(b *testing.B) {
 
 	breaker := NewRateBreaker(0.9, 100)
@@ -495,5 +517,74 @@ func BenchmarkRateBreakerSuccessNoLock(b *testing.B) {
 		breaker.Ready()
 		breaker.SuccessNoLock()
 	}
+
+}
+
+func BenchmarkRateBreakerSuccessNoBlockP(b *testing.B) {
+
+	breaker := NewRateBreaker(0.9, 100)
+	pNum := 1000
+	quitChan := initBreakerBenchEnv(breaker, pNum, true)
+	defer func() {
+		for i := 1; i <= pNum; i++ {
+			quitChan <- i
+		}
+
+	}()
+
+	b.RunParallel(func(p *testing.PB) {
+		for p.Next() {
+			breaker.Ready()
+			breaker.SuccessNoLock()
+
+		}
+	})
+
+}
+
+//初始化 breaker环境
+func initBreakerBenchEnv(breaker *Breaker, pNum int, withLock bool) chan int {
+
+	quitChan := make(chan int, 1)
+
+	failCount := pNum / 100
+
+	for i := 1; i <= pNum; i++ {
+		isFailGo := false
+		if failCount > 0 {
+			isFailGo = true
+			failCount--
+		}
+
+		go func() {
+			for {
+
+				breaker.Ready()
+
+				if isFailGo {
+					breaker.Fail()
+
+				} else {
+					if withLock {
+						breaker.Success()
+					} else {
+						breaker.SuccessNoLock()
+					}
+				}
+
+				select {
+
+				case <-time.After(time.Millisecond * 10):
+				case <-quitChan:
+					return
+				}
+
+			}
+
+		}()
+
+	}
+
+	return quitChan
 
 }
